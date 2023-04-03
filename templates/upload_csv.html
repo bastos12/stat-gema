@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Upload CSV</h1>
+
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="file" name="csv_file">
+    <br><br>
+    <button type="submit">Upload</button>
+</form>
+
+{% if data %}
+    <h2>JSON Data</h2>
+    <textarea rows="30" cols="200">{{ data }}</textarea>
+{% endif %}
+
+{% endblock %}
