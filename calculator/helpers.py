@@ -45,6 +45,28 @@ class TestStatistiques:
     def kruskal_wallis(*sample) -> Tuple[float, float]:
         stat_value, p_value = stats.kruskal(*sample)
         return stat_value, p_value
+    @staticmethod
+    def post_hoc_tukey(*sample):
+        tukey_instance = stats.tukey_hsd(*sample)
+        return tukey_instance
+
+    @staticmethod
+    def t_test_apparie(variable_1, variable_2, raise_error: bool = False) -> Tuple[float, float]:
+        if raise_error:
+            if len(variable1) != len(variable_2):
+                raise ValueError("Les longeurs des echantillons doivent être identiques")
+        else:
+            stat_value, p_value = stats.ttest_rel(variable1, variable_2)
+            return stat_value, p_value
+
+    @staticmethod
+    def wilcoxon_apparai_rang_signe(variable_1, variable_2, raise_error: bool = False) -> Tuple[float, float]:
+        if raise_error:
+            if len(variable1) != len(variable_2):
+                raise ValueError("Les longeurs des echantillons doivent être identiques")
+        else:
+            stat_value, p_value = stats.wilcoxon(variable1, variable_2)
+            return stat_value, p_value
 
 
 class ProcessStatistique(TestStatistiques):
@@ -58,6 +80,7 @@ class ProcessStatistique(TestStatistiques):
         self.var_quanti = quanti
         self._choice_quali = None
         self._choice_quanti = None
+        self._post_hoc = None
 
     @property
     def choice_quali(self):
@@ -74,11 +97,20 @@ class ProcessStatistique(TestStatistiques):
     @choice_quanti.setter
     def choice_quanti(self, value):
         self._choice_quanti = value
+
+    @property
+    def apply_posthoc(self):
+        return self._post_hoc
+
+    @apply_posthoc.setter
+    def apply_posthoc(self, value):
+        self._post_hoc = value
     
     @staticmethod
     def create_dict_from_df(df) -> dict:
         dict_data = df.to_dict(orient='records')
         return dict_data
+
     @staticmethod
     def change_comma_to_point(df: pd.DataFrame) -> pd.DataFrame:
         for i in df.columns:
@@ -89,6 +121,7 @@ class ProcessStatistique(TestStatistiques):
                 except:
                     pass
         return df
+
     @staticmethod
     def change_type(df: pd.DataFrame) -> pd.DataFrame:
         for i in df.columns:
@@ -99,6 +132,7 @@ class ProcessStatistique(TestStatistiques):
                     pass
         new = df.copy()
         return new
+
     @staticmethod
     def liste_variable(df: pd.DataFrame) -> Tuple[list, list]:
         quali = []
@@ -109,11 +143,19 @@ class ProcessStatistique(TestStatistiques):
             else:
                 quanti.append(i)
         return quali, quanti
+
     @staticmethod
     def special_transform_index_match(df: pd.DataFrame) -> pd.DataFrame:
         df['Match'] = df['Match'].astype(str)
         new = df.copy()
         return new
+
+    @staticmethod
+    def is_significatif(value):
+        if value <= 0.05:
+            return True
+        else:
+            return False
 
     def get_number_variables_qualitative(self) -> int:
         return len(self.var_quali)
@@ -155,12 +197,12 @@ class ProcessStatistique(TestStatistiques):
         else:
             return True, value
 
-    def filter_groupe_by_modalite_for_test(self, features: list) -> list:
+    def filter_groupe_by_modalite_for_test(self, features: list, quanti) -> list:
         data = []
         modalites = self.cleaning_data[features[0]].unique()
         for modalite in modalites:
             filter_groupe = self.cleaning_data[self.cleaning_data[features[0]] == modalite]
-            data.append(filter_groupe[features[0]])
+            data.append(filter_groupe[quanti[0]])
         return data
 
     def choice_test(self, choice_quali, choice_quanti, number_modalite, number_quali, number_quanti):
@@ -170,7 +212,7 @@ class ProcessStatistique(TestStatistiques):
         if number_quali == 1 and number_quanti == 1:
             if number_modalite == 2:
                 is_normal, normality = self.is_normality(self.cleaning_data[choice_quanti[0]])
-                data = self.filter_groupe_by_modalite_for_test(choice_quali)
+                data = self.filter_groupe_by_modalite_for_test(choice_quali, choice_quanti)
                 if is_normal:
                     _, pvalue = self.t_test_independant(
                         variable_1=data[0],
@@ -184,7 +226,7 @@ class ProcessStatistique(TestStatistiques):
                     )
                     test_type, test_name = "Test non-parametrique", "Test de Mann Whitney"
             elif number_modalite >= 3:
-                data = self.filter_groupe_by_modalite_for_test(choice_quali)
+                data = self.filter_groupe_by_modalite_for_test(choice_quali, choice_quanti)
                 check_bool = []
                 for i in choice_quanti:
                     is_normal, normality = self.is_normality(self.cleaning_data[i])
@@ -195,13 +237,20 @@ class ProcessStatistique(TestStatistiques):
                 if all(check_bool):
                     _, pvalue = self.anova(*data)
                     test_type, test_name = "Test parametrique", "ANOVA"
+                    if self.is_significatif(pvalue):
+                        post_hoc = self.post_hoc_tukey(*data)
+                        self.apply_posthoc = post_hoc
                 else:
                     _, pvalue = self.kruskal_wallis(*data)
                     test_type, test_name = "Test non-parametrique", "Kruskal Wallis"
+                    if self.is_significatif(pvalue):
+                        post_hoc = self.post_hoc_tukey(*data)
+                        self.apply_posthoc = post_hoc
         elif number_quali == 2 and number_quanti == 0:
             _, pvalue = "TEST", "CHI2 SQUARE"
             test_type, test_name = "Test de frequence", "Chi Square"
         elif number_quali == 0 and number_quanti == 2:
+            data = self.filter_groupe_by_modalite_for_test(choice_quali, choice_quanti)
             check_bool = []
             for i in choice_quanti:
                 is_normal, normality = self.is_normality(self.cleaning_data[i])
@@ -210,12 +259,23 @@ class ProcessStatistique(TestStatistiques):
                 else:
                     check_bool.append(False)
             if all(check_bool):
-                _, pvalue = "TEST", "STUDENT APPARIE"
+                _, pvalue = self.t_test_apparie(
+                    variable_1=data[0],
+                    variable_2=data[1],
+                    raise_error=True
+                )
                 test_type, test_name = "Test parametrique", "T-test apparie"
             else:
-                _, pvalue = "TEST", "WILCOXON RAND SIGNE"
+                _, pvalue = self.wilcoxon_apparai_rang_signe(
+                    variable_1=data[0],
+                    variable_2=data[1],
+                    raise_error=True
+                )
                 test_type, test_name = "Test non-parametrique", "Wilcoxon rang signe"
         return pvalue, normality, test_type, test_name
 
     def __str__(self):
-        return f"Le test sur les variables {self._choice_quali} et {self._choice_quanti} a ete effectue avec succes"
+        if self._post_hoc is None:
+            return f"Le test sur les variables {self._choice_quali} et {self._choice_quanti} a ete effectue avec succes"
+        else:
+            return f"Le test sur les variables {self._choice_quali} et {self._choice_quanti} a ete effectue avec succes. Les tests post_hoc presentent les resultat suivant: {self._post_hoc}"
