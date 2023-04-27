@@ -10,4 +10,7 @@ class Statistique(models.Model):
     data = models.JSONField()
     p_value = models.FloatField()
     normality = models.FloatField()
-    description = models.CharField(max_length=1000)
+    description = models.CharField(max_length=1000, blank=True, null=True)
+
+    def __str__(self):
+        return f'test numero {self.id} {self.test_name}'

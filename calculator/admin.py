@@ -10,4 +10,4 @@ class UserAdmin(admin.ModelAdmin):
 
 @admin.register(Statistique)
 class StatistiqueAdmin(admin.ModelAdmin):
-    pass
+    list_display = ('test_name', 'test_type', 'p_value', 'normality')
